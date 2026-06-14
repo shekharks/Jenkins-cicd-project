@@ -138,8 +138,7 @@ pipeline {
             echo "====================================="
             echo "PIPELINE SUCCESSFUL"
             echo "App Name  : ${env.APP_NAME}"
-            echo "Build #   : ${env.BUILD_NUMBER}"
-            echo "App URL   : http://13.233.145.158:${APP_PORT}"
+            echo "App URL   : http://13.233.145.158:9090"
             echo "====================================="
         }
         failure {
