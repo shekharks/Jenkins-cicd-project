@@ -44,3 +44,10 @@ class CalculatorServiceTest {
         assertEquals(2.5, calculator.divide(5, 2));
     }
 }
+
+    @Test
+    @DisplayName("Multiply negative numbers")
+    void testMultiplyNegative() {
+        assertEquals(15, calculator.multiply(-3, -5));
+        assertEquals(-12, calculator.multiply(3, -4));
+    }
