@@ -114,10 +114,11 @@ pipeline {
                 echo "Deploying to: ${env.DEPLOY_DIR}"
 
                 // Run the deployment script as jenkins user
-                sh '''
+                sh """
                     echo "Running deploy script..."
-                    /opt/myapp/deploy.sh
-                '''
+                    echo "Workspace: ${env.WROKSPACE}"
+                    /opt/myapp/deploy.sh ${env.WORKSPACE}
+                """
             }
         }
 
@@ -131,50 +132,3 @@ pipeline {
                         expression { env.GIT_BRANCH == 'origin/main' }
                     }
                 }
-            }
-            steps {
-                echo "Running health check on ${env.HEALTH_URL}..."
-
-                // Retry 3 times with 10 second gaps
-                // Spring Boot sometimes needs extra time
-                retry(3) {
-                    sleep(time: 10, unit: 'SECONDS')
-                    sh "curl -f -s ${env.HEALTH_URL}"
-                }
-
-                echo "Health check passed — application is UP"
-            }
-        }
-
-    }
-
-    post {
-
-        success {
-            echo "====================================="
-            echo "PIPELINE SUCCESSFUL"
-            echo "App Name  : ${env.APP_NAME}"
-            echo "Version   : ${env.APP_VERSION}"
-            echo "Build #   : ${env.BUILD_NUMBER}"
-            echo "App URL   : http://13.233.145.158:${env.APP_PORT}"
-            echo "Health    : http://13.233.145.158:${env.APP_PORT}/health"
-            echo "====================================="
-        }
-
-        failure {
-            echo "====================================="
-            echo "PIPELINE FAILED"
-            echo "Job     : ${env.JOB_NAME}"
-            echo "Build # : ${env.BUILD_NUMBER}"
-            echo "Check console output at: ${env.BUILD_URL}"
-            echo "====================================="
-        }
-
-        always {
-            echo "Cleaning up Jenkins workspace..."
-            cleanWs()
-        }
-
-    }
-
-}
