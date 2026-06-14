@@ -2,15 +2,16 @@ pipeline {
 
     agent any
 
-    // Environment variables available to every stage
     environment {
-        JAVA_HOME = '/usr/lib/jvm/java-21-openjdk-amd64'
-        MAVEN_OPTS = '-Xms128m -Xmx256m'
-        APP_NAME = 'jenkins-cicd-project'
-        APP_VERSION = '1.0-SNAPSHOT'
+        JAVA_HOME    = '/usr/lib/jvm/java-21-openjdk-amd64'
+        MAVEN_OPTS   = '-Xms128m -Xmx256m'
+        APP_NAME     = 'jenkins-cicd-project'
+        APP_VERSION  = '1.0-SNAPSHOT'
+        DEPLOY_DIR   = '/opt/myapp'
+        APP_PORT     = '9090'
+        HEALTH_URL   = "http://localhost:${APP_PORT}/health"
     }
 
-    // Parameters — user can choose which Maven goal to run at trigger time
     parameters {
         choice(
             name: 'BUILD_TYPE',
@@ -22,11 +23,15 @@ pipeline {
             defaultValue: false,
             description: 'Tick this to skip running tests'
         )
+        booleanParam(
+            name: 'DEPLOY',
+            defaultValue: true,
+            description: 'Tick this to deploy after build'
+        )
     }
 
     stages {
 
-        // Stage 1 — Print build info so logs are always identifiable
         stage('Initialize') {
             steps {
                 echo "====================================="
@@ -37,21 +42,19 @@ pipeline {
                 echo "Git Commit   : ${env.GIT_COMMIT}"
                 echo "Build Type   : ${params.BUILD_TYPE}"
                 echo "Skip Tests   : ${params.SKIP_TESTS}"
+                echo "Deploy       : ${params.DEPLOY}"
                 echo "====================================="
             }
         }
 
-        // Stage 2 — Checkout code from GitHub
         stage('Checkout') {
             steps {
                 echo "Checking out source code..."
                 checkout scm
-                echo "Checkout complete. Files in workspace:"
                 sh 'ls -la'
             }
         }
 
-        // Stage 3 — Compile the source code only
         stage('Build') {
             steps {
                 echo "Compiling source code..."
@@ -60,7 +63,6 @@ pipeline {
             }
         }
 
-        // Stage 4 — Run all JUnit tests
         stage('Test') {
             when {
                 expression { params.SKIP_TESTS == false }
@@ -71,60 +73,105 @@ pipeline {
             }
             post {
                 always {
-                    // Publish test results regardless of pass or fail
                     junit 'target/surefire-reports/*.xml'
                     echo "Test results published"
                 }
             }
         }
 
-        // Stage 5 — Package into jar (only runs if tests passed)
         stage('Package') {
             steps {
-                echo "Packaging application into jar..."
+                echo "Packaging application..."
                 sh 'mvn package -DskipTests'
-                echo "Package complete. Artifact:"
                 sh 'ls -lh target/*.jar'
             }
         }
 
-        // Stage 6 — Archive the jar as a Jenkins artifact
         stage('Archive') {
             steps {
-                echo "Archiving build artifacts..."
+                echo "Archiving artifacts..."
                 archiveArtifacts artifacts: 'target/*.jar',
                                  fingerprint: true,
                                  allowEmptyArchive: false
-                echo "Artifact archived successfully"
+            }
+        }
+
+        // NEW — Deploy stage
+        stage('Deploy') {
+            // Only deploy when DEPLOY parameter is true
+            // AND only on main branch — never auto-deploy dev
+            when {
+                allOf {
+                    expression { params.DEPLOY == true }
+                    anyOf {
+                        branch 'main'
+                        expression { env.GIT_BRANCH == 'origin/main' }
+                    }
+                }
+            }
+            steps {
+                echo "Starting deployment..."
+                echo "Deploying to: ${env.DEPLOY_DIR}"
+
+                // Run the deployment script as jenkins user
+                sh '''
+                    echo "Running deploy script..."
+                    /opt/myapp/deploy.sh
+                '''
+            }
+        }
+
+        // NEW — Health Check stage
+        stage('Health Check') {
+            when {
+                allOf {
+                    expression { params.DEPLOY == true }
+                    anyOf {
+                        branch 'main'
+                        expression { env.GIT_BRANCH == 'origin/main' }
+                    }
+                }
+            }
+            steps {
+                echo "Running health check on ${env.HEALTH_URL}..."
+
+                // Retry 3 times with 10 second gaps
+                // Spring Boot sometimes needs extra time
+                retry(3) {
+                    sleep(time: 10, unit: 'SECONDS')
+                    sh "curl -f -s ${env.HEALTH_URL}"
+                }
+
+                echo "Health check passed — application is UP"
             }
         }
 
     }
 
-    // Post pipeline actions
     post {
 
         success {
             echo "====================================="
-            echo "BUILD SUCCESSFUL"
-            echo "Application : ${env.APP_NAME}"
-            echo "Version     : ${env.APP_VERSION}"
-            echo "Build #     : ${env.BUILD_NUMBER}"
-            echo "Artifact    : target/jenkins-cicd-project-1.0-SNAPSHOT.jar"
+            echo "PIPELINE SUCCESSFUL"
+            echo "App Name  : ${env.APP_NAME}"
+            echo "Version   : ${env.APP_VERSION}"
+            echo "Build #   : ${env.BUILD_NUMBER}"
+            echo "App URL   : http://13.233.145.158:${env.APP_PORT}"
+            echo "Health    : http://13.233.145.158:${env.APP_PORT}/health"
             echo "====================================="
         }
 
         failure {
             echo "====================================="
-            echo "BUILD FAILED"
+            echo "PIPELINE FAILED"
             echo "Job     : ${env.JOB_NAME}"
             echo "Build # : ${env.BUILD_NUMBER}"
-            echo "Check console output for details"
+            echo "Check console output at: ${env.BUILD_URL}"
             echo "====================================="
         }
 
         always {
-            echo "Pipeline finished. Cleaning up workspace..."
+            echo "Cleaning up Jenkins workspace..."
             cleanWs()
         }
 
