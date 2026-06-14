@@ -3,13 +3,12 @@ pipeline {
     agent any
 
     environment {
-        JAVA_HOME    = '/usr/lib/jvm/java-21-openjdk-amd64'
-        MAVEN_OPTS   = '-Xms128m -Xmx256m'
-        APP_NAME     = 'jenkins-cicd-project'
-        APP_VERSION  = '1.0-SNAPSHOT'
-        DEPLOY_DIR   = '/opt/myapp'
-        APP_PORT     = '9090'
-        HEALTH_URL   = "http://localhost:${APP_PORT}/health"
+        JAVA_HOME   = '/usr/lib/jvm/java-21-openjdk-amd64'
+        MAVEN_OPTS  = '-Xms128m -Xmx256m'
+        APP_NAME    = 'jenkins-cicd-project'
+        APP_VERSION = '1.0-SNAPSHOT'
+        DEPLOY_DIR  = '/opt/myapp'
+        APP_PORT    = '9090'
     }
 
     parameters {
@@ -40,8 +39,7 @@ pipeline {
                 echo "Build URL    : ${env.BUILD_URL}"
                 echo "Git Branch   : ${env.GIT_BRANCH}"
                 echo "Git Commit   : ${env.GIT_COMMIT}"
-                echo "Build Type   : ${params.BUILD_TYPE}"
-                echo "Skip Tests   : ${params.SKIP_TESTS}"
+                echo "Workspace    : ${env.WORKSPACE}"
                 echo "Deploy       : ${params.DEPLOY}"
                 echo "====================================="
             }
@@ -96,10 +94,7 @@ pipeline {
             }
         }
 
-        // NEW — Deploy stage
         stage('Deploy') {
-            // Only deploy when DEPLOY parameter is true
-            // AND only on main branch — never auto-deploy dev
             when {
                 allOf {
                     expression { params.DEPLOY == true }
@@ -111,18 +106,11 @@ pipeline {
             }
             steps {
                 echo "Starting deployment..."
-                echo "Deploying to: ${env.DEPLOY_DIR}"
-
-                // Run the deployment script as jenkins user
-                sh """
-                    echo "Running deploy script..."
-                    echo "Workspace: ${env.WROKSPACE}"
-                    /opt/myapp/deploy.sh ${env.WORKSPACE}
-                """
+                echo "Workspace path: ${env.WORKSPACE}"
+                sh "/opt/myapp/deploy.sh ${env.WORKSPACE}"
             }
         }
 
-        // NEW — Health Check stage
         stage('Health Check') {
             when {
                 allOf {
@@ -132,3 +120,39 @@ pipeline {
                         expression { env.GIT_BRANCH == 'origin/main' }
                     }
                 }
+            }
+            steps {
+                echo "Running health check..."
+                retry(3) {
+                    sleep(time: 10, unit: 'SECONDS')
+                    sh "curl -f -s http://localhost:${APP_PORT}/health"
+                }
+                echo "Health check passed - application is UP"
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo "====================================="
+            echo "PIPELINE SUCCESSFUL"
+            echo "App Name  : ${env.APP_NAME}"
+            echo "Build #   : ${env.BUILD_NUMBER}"
+            echo "App URL   : http://13.233.145.158:${APP_PORT}"
+            echo "====================================="
+        }
+        failure {
+            echo "====================================="
+            echo "PIPELINE FAILED"
+            echo "Job     : ${env.JOB_NAME}"
+            echo "Build # : ${env.BUILD_NUMBER}"
+            echo "====================================="
+        }
+        always {
+            echo "Cleaning up workspace..."
+            cleanWs()
+        }
+    }
+
+}
