@@ -26,4 +26,9 @@ public class AppController {
     public String health() {
         return "UP";
     }
+@GetMapping("/multiply")
+public String multiply(@RequestParam int a, @RequestParam int b) {
+    int result = calculatorService.multiply(a, b);
+    return "Result: " + a + " x " + b + " = " + result;
+ }
 }
