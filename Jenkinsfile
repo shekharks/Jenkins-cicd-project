@@ -138,7 +138,7 @@ pipeline {
             echo "====================================="
             echo "PIPELINE SUCCESSFUL"
             echo "App Name  : ${env.APP_NAME}"
-            echo "App URL   : http://13.233.145.158:9090"
+            echo "App URL   : http://13.234.76.212:9090"
             echo "====================================="
         }
         failure {
